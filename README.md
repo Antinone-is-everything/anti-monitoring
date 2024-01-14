@@ -1,0 +1,2 @@
+# anti-monitoring
+service monitoring
