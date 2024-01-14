@@ -1,0 +1,28 @@
+[
+        {
+            "ServerDomain": "example1.antinone.xyz",
+            "ServerPort": 8080,
+            "ApiKey": "adcdefghnop123456789",
+            "HealthCheck": "/server",
+            "ServerRegion": "ca-central-1",
+            "ServerName": "Ubuntu-server-name",
+            "ErrorCount": 0,
+            "TrigerCount": 3,
+            "ResetTimestamp": 0,
+            "Profile": "profile-name",
+            "Active": true
+        },
+        {
+            "ServerDomain": "example2.antinone.xyz",
+            "ServerPort": 8080,
+            "ApiKey": "abcdefgh123456789",
+            "HealthCheck": "/server",
+            "ServerRegion": "eu-west-2",
+            "ServerName": "Ubuntu-server-name",
+            "ErrorCount": 0,
+            "TrigerCount": 3,
+            "ResetTimestamp": 0,
+            "Profile": "profile-name",
+            "Active": false
+        }
+]

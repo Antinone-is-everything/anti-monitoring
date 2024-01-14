@@ -4,23 +4,24 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"time"
 )
 
 // Program represents a monitored program
 type Server struct {
-	ServerDomain   string
-	ServerPort     int
-	ApiKey         string
-	HealthCheck    string
-	ServerRegion   string
-	ServerName     string
-	ErrorCount     int
-	TrigerCount    int
-	ResetTimestamp int64
-	Profile        string
-	Active         bool
+	ServerDomain   string `json:"ServerDomain"`
+	ServerPort     int    `json:"ServerPort"`
+	ApiKey         string `json:"ApiKey"`
+	HealthCheck    string `json:"HealthCheck"`
+	ServerRegion   string `json:"ServerRegion"`
+	ServerName     string `json:"ServerName"`
+	ErrorCount     int    `json:"ErrorCount"`
+	TrigerCount    int    `json:"TrigerCount"`
+	ResetTimestamp int64  `json:"ResetTimestamp"`
+	Profile        string `json:"Profile"`
+	Active         bool   `json:"Active"`
 }
 
 func monitorServer(url string) bool {
@@ -64,20 +65,37 @@ func serverAction(action, region, name, profile string) bool {
 
 func main() {
 
-	serversMonitoring := []Server{
-		{
-			ServerDomain:   "example.antinone.xyz",
-			ServerPort:     8080,
-			ApiKey:         "abcdefgh12344567889",
-			HealthCheck:    "/server",
-			ServerRegion:   "ca-central-1",
-			ServerName:     "Ubuntu-server-name",
-			ErrorCount:     0,
-			TrigerCount:    3,
-			ResetTimestamp: 0,
-			Profile:        "profile-name",
-			Active:         true,
-		},
+	// serversMonitoring := []Server{
+	// 	{
+	// 		ServerDomain:   "example.antinone.xyz",
+	// 		ServerPort:     8080,
+	// 		ApiKey:         "abcdefgh12344567889",
+	// 		HealthCheck:    "/server",
+	// 		ServerRegion:   "ca-central-1",
+	// 		ServerName:     "Ubuntu-server-name",
+	// 		ErrorCount:     0,
+	// 		TrigerCount:    3,
+	// 		ResetTimestamp: 0,
+	// 		Profile:        "profile-name",
+	// 		Active:         true,
+	// 	},
+	// }
+
+	// Open our jsonFile
+	serversList, err := ioutil.ReadFile("./servers.json")
+	// if we os.Open returns an error then handle it
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// we initialize our Users array
+	var serversMonitoring []Server
+
+	// we unmarshal our byteArray which contains our
+	// jsonFile's content into 'users' which we defined above
+	err = json.Unmarshal(serversList, &serversMonitoring)
+	if err != nil {
+		fmt.Println("Unmarshal error:", err)
 	}
 
 	// Main loop to monitor the programs
