@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 )
@@ -29,7 +30,7 @@ func monitorServer(url string) bool {
 	http.DefaultClient.Timeout = 5 * time.Second
 	response, err := http.Get(url)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		log.Printf("| Error Get monitoring service: %v\n", err)
 		return true
 	}
 	if response.StatusCode == 200 {
@@ -43,7 +44,7 @@ func serverAction(action, region, name, profile string) bool {
 	timestamp := time.Now().Unix()
 	resp, err := http.Get(fmt.Sprintf("https://api.antinone.xyz/api/instance?action=%s&region=%s&name=%s&secret=%d&profile=%s", action, region, name, timestamp, profile))
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		log.Printf("| Error Get Api call: %v\n", err)
 		return false
 	}
 	defer resp.Body.Close()
@@ -51,10 +52,10 @@ func serverAction(action, region, name, profile string) bool {
 	var result map[string]interface{}
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
-		fmt.Printf("Error decoding JSON: %v\n", err)
+		log.Printf("| Error decoding JSON Api call: %v\n", err)
 		return false
 	}
-	fmt.Printf("Reset Status Server : %v\n", result)
+	log.Printf("| Call back api service reset server : %v\n", result)
 	if resp.StatusCode == 200 {
 		return true
 	} else {
@@ -85,7 +86,7 @@ func main() {
 	serversList, err := ioutil.ReadFile("./servers.json")
 	// if we os.Open returns an error then handle it
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("| Read Json File Error %s", err)
 	}
 
 	// we initialize our Users array
@@ -95,7 +96,7 @@ func main() {
 	// jsonFile's content into 'users' which we defined above
 	err = json.Unmarshal(serversList, &serversMonitoring)
 	if err != nil {
-		fmt.Println("Unmarshal error:", err)
+		log.Println("| Unmarshal error:", err)
 	}
 
 	// Main loop to monitor the programs
@@ -103,23 +104,23 @@ func main() {
 	for {
 		for i := range serversMonitoring {
 			if serversMonitoring[i].Active {
-				fmt.Printf("check service %s errorCount : %d \n", serversMonitoring[i].ServerDomain, serversMonitoring[i].ErrorCount)
+				log.Printf("| %d - check service %s - errorCount: %d \n", i, serversMonitoring[i].ServerDomain, serversMonitoring[i].ErrorCount)
 				healthCheckUrl := fmt.Sprintf("https://%s:%d/%s%s", serversMonitoring[i].ServerDomain, serversMonitoring[i].ServerPort, serversMonitoring[i].ApiKey, serversMonitoring[i].HealthCheck)
 
 				if monitorServer(healthCheckUrl) {
 					serversMonitoring[i].ErrorCount++
 					if serversMonitoring[i].ErrorCount >= serversMonitoring[i].TrigerCount {
-						if time.Now().Unix()-serversMonitoring[i].ResetTimestamp > 500 {
+						if time.Now().Unix()-serversMonitoring[i].ResetTimestamp > 240 {
 							if serverAction("reset", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName, serversMonitoring[i].Profile) {
 
 								serversMonitoring[i].ResetTimestamp = time.Now().Unix()
-								fmt.Printf("Program reset successful for %s\n", serversMonitoring[i].ServerDomain)
+								log.Printf("| Program reset successful server %s\n", serversMonitoring[i].ServerDomain)
 
 							} else {
-								fmt.Printf("Program reset failed for %s\n", serversMonitoring[i].ServerDomain)
+								log.Printf("| Program reset failed server %s\n", serversMonitoring[i].ServerDomain)
 							}
 						} else {
-							fmt.Printf("The server %s was reset %d minutes ago\n", serversMonitoring[i].ServerDomain, (time.Now().Unix()-serversMonitoring[i].ResetTimestamp)/60)
+							log.Printf("| The server %s was reset %d minutes ago\n", serversMonitoring[i].ServerDomain, (time.Now().Unix()-serversMonitoring[i].ResetTimestamp)/60)
 						}
 
 					}
@@ -127,9 +128,10 @@ func main() {
 					serversMonitoring[i].ErrorCount = 0
 				}
 			} else {
-				fmt.Printf("Disable monitoring service %s\n", serversMonitoring[i].ServerDomain)
+				log.Printf("| Disable monitoring service %s\n", serversMonitoring[i].ServerDomain)
 			}
 		}
-		time.Sleep(10 * time.Second) // Sleep for 60 seconds before checking again
+		log.Println("| <<<---------------END--------------->>> |")
+		time.Sleep(20 * time.Second) // Sleep for 60 seconds before checking again
 	}
 }
