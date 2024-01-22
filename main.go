@@ -27,7 +27,7 @@ type Server struct {
 
 func monitorServer(url string) bool {
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	http.DefaultClient.Timeout = 5 * time.Second
+	http.DefaultClient.Timeout = 10 * time.Second
 	response, err := http.Get(url)
 	if err != nil {
 		log.Printf("| Error Get monitoring service: %v\n", err)
@@ -108,27 +108,27 @@ func main() {
 				healthCheckUrl := fmt.Sprintf("https://%s:%d/%s%s", serversMonitoring[i].ServerDomain, serversMonitoring[i].ServerPort, serversMonitoring[i].ApiKey, serversMonitoring[i].HealthCheck)
 
 				if monitorServer(healthCheckUrl) {
-					serversMonitoring[i].ErrorCount++
 					if serversMonitoring[i].ErrorCount >= serversMonitoring[i].TrigerCount {
-						if time.Now().Unix()-serversMonitoring[i].ResetTimestamp > 240 {
+						if time.Now().Unix()-serversMonitoring[i].ResetTimestamp > 360 {
 							if serverAction("reset", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName, serversMonitoring[i].Profile) {
 
 								serversMonitoring[i].ResetTimestamp = time.Now().Unix()
-								log.Printf("| Program reset successful server %s\n", serversMonitoring[i].ServerDomain)
+								log.Printf("| %d - Program reset successful server %s\n", i, serversMonitoring[i].ServerDomain)
 
 							} else {
-								log.Printf("| Program reset failed server %s\n", serversMonitoring[i].ServerDomain)
+								log.Printf("| %d - Program reset failed server %s\n", i, serversMonitoring[i].ServerDomain)
 							}
 						} else {
-							log.Printf("| The server %s was reset %d minutes ago\n", serversMonitoring[i].ServerDomain, (time.Now().Unix()-serversMonitoring[i].ResetTimestamp)/60)
+							log.Printf("| %d - The server %s was reset %d minutes ago\n", i, serversMonitoring[i].ServerDomain, (time.Now().Unix()-serversMonitoring[i].ResetTimestamp)/60)
 						}
 
 					}
+					serversMonitoring[i].ErrorCount++
 				} else {
 					serversMonitoring[i].ErrorCount = 0
 				}
 			} else {
-				log.Printf("| Disable monitoring service %s\n", serversMonitoring[i].ServerDomain)
+				log.Printf("| %d - Disable monitoring service %s\n", i, serversMonitoring[i].ServerDomain)
 			}
 		}
 		log.Println("| <<<---------------END--------------->>> |")
