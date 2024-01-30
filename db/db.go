@@ -110,7 +110,7 @@ func InsertServer(db *sql.DB, server Server) int {
 	var pk int
 	err := db.QueryRow(query, server.ServerDomain, server.ApiKey, server.ServerRegion, server.ServerName).Scan(&pk)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("| Error Insert to Table : %v", err)
 	}
 	return pk
 }
