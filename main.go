@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"monitoring/alert"
 	"monitoring/db"
 	"net/http"
 	"time"
@@ -51,6 +52,7 @@ func serverAction(action, region, name, profile string) bool {
 
 func main() {
 
+	telegramToken := alert.NewTelegramConfig("12345567789:AAEXFXjbOnaabcdefghjlmnopqrstuwxyz", "https://api.telegram.org/bot%s/%s")
 	serversMonitoring := []db.Server{}
 
 	dbs, err := db.ConnectToDatabase()
@@ -93,6 +95,9 @@ func main() {
 	var Profile string
 	var Active bool
 
+	var adminID int64 = 67693990 //user Admin telegram ID
+	var messageID int = 0
+
 	rows, err := dbs.Query("SELECT ServerDomain, ServerPort, ApiKey, HealthCheck, ServerRegion, ServerName, ErrorCount, TrigerCount, ResetTime, Profile, Active FROM server")
 	if err != nil {
 		log.Fatal(err)
@@ -120,13 +125,47 @@ func main() {
 
 				if monitorServer(healthCheckUrl) {
 
+					if messageID != 0 {
+						err := alert.DeleteMesg(telegramToken, messageID, adminID)
+						if err != nil {
+							log.Printf("| Message Delete fail  %v", err)
+						} else {
+							log.Printf("| Message Delete successfully with ID: %d\n", messageID)
+						}
+						messageID = 0
+					}
+
+					problemMsg := fmt.Sprintf("<b>Antinone Monitoring🤖🗣</b>\n"+
+						"⚠️🚽 Server Outline %s is dead ☠️⚰️‼️\n"+
+						"📊 ErrCount: %d\n"+
+						"🧭 Status: %d\n"+
+						"🖥 ServerName: %s\n"+
+						"🌎 Region: %s\n"+
+						"⏰ Time: %s",
+						serversMonitoring[i].ServerDomain, serversMonitoring[i].ErrorCount, 000, serversMonitoring[i].ServerName, serversMonitoring[i].ServerRegion, time.Now().Format("2006-01-02 15:04:05"))
+					messageID, err = alert.SendMesg(telegramToken, problemMsg, adminID)
+					if err != nil {
+						log.Printf("| Message sent fail  %v", err)
+					} else {
+						log.Printf("| Message sent successfully with ID: %d\n", messageID)
+					}
+
 					if serversMonitoring[i].ErrorCount >= serversMonitoring[i].TrigerCount {
 						if time.Now().Unix()-serversMonitoring[i].ResetTime > 240 {
 							if serverAction("reset", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName, serversMonitoring[i].Profile) {
 
 								serversMonitoring[i].ResetTime = time.Now().Unix()
 								log.Printf("| %d - Program reset successful server %s\n", i, serversMonitoring[i].ServerDomain)
-
+								resetMsg := fmt.Sprintf("<b>Antinone Monitoring🤖🗣</b>\n"+
+									"⚠️♻️ Server Outline %s restarted 🔎\n"+
+									"🖥 ServerName: %s\n"+
+									"🌎 Region: %s\n"+
+									"⏰ ResetTime: %s",
+									serversMonitoring[i].ServerDomain, serversMonitoring[i].ServerName, serversMonitoring[i].ServerRegion, time.Now().Format("2006-01-02 15:04:05"))
+								_, err = alert.SendMesg(telegramToken, resetMsg, adminID)
+								if err != nil {
+									log.Printf("| Message sent fail  %v", err)
+								}
 							} else {
 								log.Printf("| %d - Program reset failed server %s\n", i, serversMonitoring[i].ServerDomain)
 							}
