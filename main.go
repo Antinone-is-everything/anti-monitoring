@@ -60,7 +60,7 @@ func serverAction(action, region, name, profile string) bool {
 }
 
 func main() {
-	err := godotenv.Load(".env")
+	err := godotenv.Load("./vars/.env")
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
