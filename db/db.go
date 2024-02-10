@@ -46,10 +46,10 @@ func ConnectToDatabase(connection *DBConfig) (*sql.DB, error) {
 		return nil, err
 	}
 
-	err = db.Ping()
-	if err != nil {
-		return nil, err
-	}
+	// err = db.Ping()
+	// if err != nil {
+	// 	return nil, err
+	// }
 	log.Println("| Successfully connected!")
 	return db, nil
 

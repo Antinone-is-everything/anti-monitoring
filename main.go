@@ -65,6 +65,10 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
+	loop_time, err := strconv.Atoi(os.Getenv("LOOP_TIME"))
+	if err != nil {
+		log.Printf("| Error ENV LOOP_TIME: %v\n", err)
+	}
 	cfg := db.DBConfig{
 		Host:     os.Getenv("DB_HOST"),
 		Port:     5432,
@@ -76,40 +80,10 @@ func main() {
 	telegramToken := alert.NewTelegramConfig(os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("TELEGRAM_API"))
 	// adminID, _ := strconv.ParseInt(os.Getenv("TELEGRAM_ADMIN_ID"), 10, 64)
 	adminID, err := strconv.ParseInt(os.Getenv("TELEGRAM_ADMIN_ID"), 10, 64) //user Admin telegram ID
-	if err == nil {
-		fmt.Printf("%d of type %T", adminID, adminID)
+	if err != nil {
+		fmt.Printf("| Failed load AdminID  %d of type %T , Error is %v\n", adminID, adminID, err)
 	}
 	var messageID int = 0
-
-	serversMonitoring := []db.Server{}
-
-	dbs, err := db.ConnectToDatabase(&cfg)
-	if err != nil {
-		fmt.Println("Failed to connect to the database:", err)
-	}
-
-	err = db.CreateServerTable(dbs)
-	if err != nil {
-		fmt.Println("Failed to connect to the database:", err)
-	}
-
-	// // Open our jsonFile
-	// serversList, err := ioutil.ReadFile("./servers.json")
-	// // if we os.Open returns an error then handle it
-	// if err != nil {
-	// 	log.Printf("| Read Json File Error %s", err)
-	// }
-	// // we unmarshal our byteArray which contains our
-	// // jsonFile's content into 'users' which we defined above
-	// err = json.Unmarshal(serversList, &serversMonitoring)
-	// if err != nil {
-	// 	log.Println("| Unmarshal error:", err)
-	// }
-
-	// for y := range serversMonitoring {
-	// 	id := db.InsertServer(dbs, serversMonitoring[y])
-	// 	log.Printf("| Inserted server with ID: %d\n", id)
-	// }
 
 	var ServerDomain string
 	var ServerPort int
@@ -123,19 +97,57 @@ func main() {
 	var Profile string
 	var Active bool
 
-	rows, err := dbs.Query("SELECT ServerDomain, ServerPort, ApiKey, HealthCheck, ServerRegion, ServerName, ErrorCount, TrigerCount, ResetTime, Profile, Active FROM server")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
+	serversMonitoring := []db.Server{}
 
-	for rows.Next() {
-		err := rows.Scan(&ServerDomain, &ServerPort, &ApiKey, &HealthCheck, &ServerRegion, &ServerName, &ErrorCount, &TrigerCount, &ResetTime, &Profile, &Active)
+	dbs, err := db.ConnectToDatabase(&cfg)
+	if err != nil {
+		fmt.Println("Failed to connect to the database:", err)
+	}
+
+	err = dbs.Ping()
+	if err == nil {
+		log.Println("| Read Config From Database ")
+		err := db.CreateServerTable(dbs)
+		if err != nil {
+			fmt.Println("Failed to connect to the database:", err)
+		}
+
+		rows, err := dbs.Query("SELECT ServerDomain, ServerPort, ApiKey, HealthCheck, ServerRegion, ServerName, ErrorCount, TrigerCount, ResetTime, Profile, Active FROM server")
 		if err != nil {
 			log.Fatal(err)
 		}
+		defer rows.Close()
 
-		serversMonitoring = append(serversMonitoring, db.Server{ServerDomain, ServerPort, ApiKey, HealthCheck, ServerRegion, ServerName, ErrorCount, TrigerCount, ResetTime, Profile, Active})
+		for rows.Next() {
+			err := rows.Scan(&ServerDomain, &ServerPort, &ApiKey, &HealthCheck, &ServerRegion, &ServerName, &ErrorCount, &TrigerCount, &ResetTime, &Profile, &Active)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			serversMonitoring = append(serversMonitoring, db.Server{ServerDomain, ServerPort, ApiKey, HealthCheck, ServerRegion, ServerName, ErrorCount, TrigerCount, ResetTime, Profile, Active})
+		}
+
+	} else {
+
+		log.Println("| Read Config From JSON file ")
+		// Open our jsonFile
+		serversList, err := os.ReadFile("./servers.json")
+		// if we os.Open returns an error then handle it
+		if err != nil {
+			log.Printf("| Read Json File Error %s", err)
+		}
+		// we unmarshal our byteArray which contains our
+		// jsonFile's content into 'users' which we defined above
+		err = json.Unmarshal(serversList, &serversMonitoring)
+		if err != nil {
+			log.Println("| Unmarshal error:", err)
+		}
+
+		// for y := range serversMonitoring {
+		// 	id := db.InsertServer(dbs, serversMonitoring[y])
+		// 	log.Printf("| Inserted server with ID: %d\n", id)
+		// }
+
 	}
 
 	fmt.Println(serversMonitoring)
@@ -208,6 +220,7 @@ func main() {
 			}
 		}
 		log.Println("| <<<---------------END--------------->>> |")
-		time.Sleep(20 * time.Second) // Sleep for 60 seconds before checking again
+
+		time.Sleep(time.Duration(loop_time) * time.Second) // Sleep for 60 seconds before checking again
 	}
 }
