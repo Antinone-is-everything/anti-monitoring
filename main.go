@@ -8,12 +8,21 @@ import (
 	"monitoring/alert"
 	"monitoring/db"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 func monitorServer(url string) bool {
+	http_timeout, err := strconv.Atoi(os.Getenv("HTTP_TIMEOUT"))
+	if err != nil {
+		log.Printf("| Error ENV HTTP_TIMEOUT: %v\n", err)
+		return true
+	}
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	http.DefaultClient.Timeout = 10 * time.Second
+	http.DefaultClient.Timeout = time.Duration(http_timeout) * time.Second
 	response, err := http.Get(url)
 	if err != nil {
 		log.Printf("| Error Get monitoring service: %v\n", err)
@@ -28,7 +37,7 @@ func monitorServer(url string) bool {
 
 func serverAction(action, region, name, profile string) bool {
 	timestamp := time.Now().Unix()
-	resp, err := http.Get(fmt.Sprintf("https://api.antinone.xyz/api/instance?action=%s&region=%s&name=%s&secret=%d&profile=%s", action, region, name, timestamp, profile))
+	resp, err := http.Get(fmt.Sprintf(os.Getenv("API_RESET_SRV"), action, region, name, timestamp, profile))
 	if err != nil {
 		log.Printf("| Error Get Api call: %v\n", err)
 		return false
@@ -51,11 +60,30 @@ func serverAction(action, region, name, profile string) bool {
 }
 
 func main() {
+	err := godotenv.Load("./vars/.env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 
-	telegramToken := alert.NewTelegramConfig("12345567789:AAEXFXjbOnaabcdefghjlmnopqrstuwxyz", "https://api.telegram.org/bot%s/%s")
+	cfg := db.DBConfig{
+		Host:     os.Getenv("DB_HOST"),
+		Port:     5432,
+		User:     os.Getenv("DB_USER"),
+		Password: os.Getenv("DB_PASS"),
+		DBName:   os.Getenv("DB_NAME"),
+	}
+
+	telegramToken := alert.NewTelegramConfig(os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("TELEGRAM_API"))
+	// adminID, _ := strconv.ParseInt(os.Getenv("TELEGRAM_ADMIN_ID"), 10, 64)
+	adminID, err := strconv.ParseInt(os.Getenv("TELEGRAM_ADMIN_ID"), 10, 64) //user Admin telegram ID
+	if err == nil {
+		fmt.Printf("%d of type %T", adminID, adminID)
+	}
+	var messageID int = 0
+
 	serversMonitoring := []db.Server{}
 
-	dbs, err := db.ConnectToDatabase()
+	dbs, err := db.ConnectToDatabase(&cfg)
 	if err != nil {
 		fmt.Println("Failed to connect to the database:", err)
 	}
@@ -94,9 +122,6 @@ func main() {
 	var ResetTime int64
 	var Profile string
 	var Active bool
-
-	var adminID int64 = 67693990 //user Admin telegram ID
-	var messageID int = 0
 
 	rows, err := dbs.Query("SELECT ServerDomain, ServerPort, ApiKey, HealthCheck, ServerRegion, ServerName, ErrorCount, TrigerCount, ResetTime, Profile, Active FROM server")
 	if err != nil {

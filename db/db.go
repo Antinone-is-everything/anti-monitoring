@@ -8,13 +8,21 @@ import (
 	_ "github.com/lib/pq"
 )
 
-const (
-	host     = "localhost"
-	port     = 5432
-	user     = "antinone_user"
-	password = "hey_you_are_antinone"
-	dbname   = "antinone_db"
-)
+// const (
+// 	host     = "localhost"
+// 	port     = 5432
+// 	user     = "antinone_user"
+// 	password = "hey_you_are_antinone"
+// 	dbname   = "antinone_db"
+// )
+
+type DBConfig struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+	DBName   string
+}
 
 type Server struct {
 	ServerDomain string
@@ -30,19 +38,17 @@ type Server struct {
 	Active       bool
 }
 
-func ConnectToDatabase() (*sql.DB, error) {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-		"password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
+func ConnectToDatabase(connection *DBConfig) (*sql.DB, error) {
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+		connection.Host, connection.Port, connection.User, connection.Password, connection.DBName)
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	// defer db.Close()
 
 	err = db.Ping()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	log.Println("| Successfully connected!")
 	return db, nil
