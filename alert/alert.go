@@ -29,6 +29,7 @@ func SendMesg(config *TelegramConfig, message string, chatID int64) (int, error)
 	// Create a message configuration
 	msg := tgbotapi.NewMessage(chatID, message)
 	msg.ParseMode = tgbotapi.ModeHTML
+	msg.DisableWebPagePreview = true
 
 	// Send the message
 	sentMessage, err := bot.Send(msg)

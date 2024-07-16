@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"log"
 	"monitoring/alert"
+	"monitoring/checkHost"
 	"monitoring/db"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -39,6 +41,48 @@ func monitorServer(url string) bool {
 		return true
 	}
 }
+
+// func blockMonitor(serverAddress string) (bool, string) {
+
+// 	requestURL := fmt.Sprintf(os.Getenv("API_BLOCK_CHECK"), serverAddress, 10901, os.Getenv("LOCATION_IR1"), os.Getenv("LOCATION_IR2"), os.Getenv("LOCATION_IR3"), os.Getenv("LOCATION_IR4"))
+// 	req, err := http.NewRequest("GET", requestURL, nil)
+// 	if err != nil {
+// 		log.Printf("| client: could not create request: %s\n", err)
+// 		return false, ""
+// 	}
+// 	req.Header.Set("Content-Type", "application/json")
+
+// 	client := http.Client{
+// 		Timeout: 30 * time.Second,
+// 	}
+
+// 	res, err := client.Do(req)
+// 	if err != nil {
+// 		log.Printf("| client: error making http request: %s\n", err)
+// 		return false, ""
+// 	}
+// 	defer res.Body.Close()
+
+// 	var result map[string]interface{}
+// 	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+// 		log.Printf("| Error decoding JSON Api call: %v\n", err)
+// 		return false, ""
+// 	}
+
+// 	permanentLink, ok := result["permanent_link"].(string)
+// 	if !ok {
+// 		log.Println("| Error: permanent_link field not found or not a string value")
+// 		return false, ""
+// 	}
+
+// 	okValue, ok := result["ok"].(float64)
+// 	if !ok || okValue != 1 {
+// 		log.Println("| Error: Response indicates not okay")
+// 		return false, ""
+// 	}
+
+// 	return true, permanentLink
+// }
 
 func serverAction(action, region, name, profile string) bool {
 	timestamp := time.Now().Unix()
@@ -74,6 +118,12 @@ func main() {
 	if err != nil {
 		log.Printf("| Error ENV LOOP_TIME: %v\n", err)
 	}
+
+	reset_time_flag, err := strconv.ParseInt(os.Getenv("RESET_TIME_FLAG"), 10, 64)
+	if err != nil {
+		log.Printf("| Error ENV RESET_TIME_FLAG: %v\n", err)
+	}
+
 	cfg := db.DBConfig{
 		Host:     os.Getenv("DB_HOST"),
 		Port:     5432,
@@ -174,7 +224,70 @@ func main() {
 
 					log.Printf("| %d - check service %s - errorCount: %d \n", i, serversMonitoring[i].ServerDomain, serversMonitoring[i].ErrorCount)
 					healthCheckUrl := fmt.Sprintf("https://%s:%d/%s%s", serversMonitoring[i].ServerDomain, serversMonitoring[i].ServerPort, serversMonitoring[i].ApiKey, serversMonitoring[i].HealthCheck)
+					//new features
+					checkBlockUrl := fmt.Sprintf(os.Getenv("API_BLOCK_CHECK"), serversMonitoring[i].ServerDomain, 10901, os.Getenv("LOCATION_IR1"), os.Getenv("LOCATION_IR2"), os.Getenv("LOCATION_IR3"), os.Getenv("LOCATION_IR4"))
+					checkResp, err := checkHost.CheckHost(checkBlockUrl)
+					if err != nil {
+						log.Printf("| Check Block Host Fail Error is : %v", err)
+					}
+					log.Printf("| %d - Response Check Host %s - Request ID: %s \n", i, serversMonitoring[i].ServerDomain, checkResp["request_id"])
+					checkResult, err := checkHost.CheckResultTry(fmt.Sprint(checkResp["request_id"]))
+					if err != nil {
+						log.Printf("| Check Result Block Host Fail Error is : %v", err)
+					}
+					log.Printf("| %d - Response Check Result : %v\n", i, checkResult)
+					// Check each key in the response for timeout errors
+					blockLocation := []string{}
+					for key, entries := range checkResult {
+						for _, entry := range entries {
+							// Check if the error field contains a timeout error
+							if entry.Error == "Connection timed out" {
+								log.Printf("| %d - Timeout error detected for key '%s': %v", i, key, entry)
+								blockLocation = append(blockLocation, key+"\n")
 
+								// Handle the timeout error as required (e.g., log it, return an error, etc.)
+							}
+						}
+					}
+					if len(blockLocation) != 0 {
+						BlockMsg := fmt.Sprintf("<b>Antinone Monitoring🤖🗣</b>\n\n"+
+							"⛔️CHECK BLOCK SERVER IN IRAN🇮🇷 ‼️\n\n"+
+							"ℹ️Check <code>%s</code> <a href=\"%s\">RequestID</a> \n"+
+							"⚠️🚽Problem this locations:\n<code>%s</code>\n"+
+							"⏰ Time: %s", serversMonitoring[i].ServerDomain, checkResp["permanent_link"], strings.Trim(fmt.Sprint(blockLocation), "[]"), time.Now().Format("2006-01-02 15:04:05"))
+
+						_, err := alert.SendMesg(telegramToken, BlockMsg, adminID)
+						if err != nil {
+							log.Printf("| Message sent fail  %v", err)
+						}
+					}
+
+					if len(blockLocation) == 3 && serversMonitoring[i].ServerDomain != "none-eu-enter2.antinone.xyz" && serversMonitoring[i].ServerDomain != "none-eu-enter3.antinone.xyz" { //check config changIP true or false from database
+
+						if time.Now().Unix()-serversMonitoring[i].ResetTime > reset_time_flag {
+							if serverAction("changeip", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName, serversMonitoring[i].Profile) {
+								serversMonitoring[i].ResetTime = time.Now().Unix()
+								BlockMsg := fmt.Sprintf("<b>Antinone Monitoring🤖🗣</b>\n\n"+
+									"♻️ Call Change IP ‼️\n\n"+
+									"ℹ️HOST: <code>%s</code>\n"+
+									"⏰ Time: %s", serversMonitoring[i].ServerDomain, time.Now().Format("2006-01-02 15:04:05"))
+
+								_, err := alert.SendMesg(telegramToken, BlockMsg, adminID)
+								if err != nil {
+									log.Printf("| Message sent fail  %v", err)
+								}
+							} else {
+								log.Printf("| %d - Program changeIP failed server %s\n", i, serversMonitoring[i].ServerDomain)
+							}
+						} else {
+							log.Printf("| %d - The server %s was changeIP %d minutes ago\n", i, serversMonitoring[i].ServerDomain, (time.Now().Unix()-serversMonitoring[i].ResetTime)/60)
+						}
+
+					} else {
+						log.Printf("| %d - The server %s Don't Action changeIP because Block Location is\n len=%d cap=%d %s", i, serversMonitoring[i].ServerDomain, len(blockLocation), cap(blockLocation), strings.Trim(fmt.Sprint(blockLocation), "[]"))
+					}
+					//END features
+					//
 					if monitorServer(healthCheckUrl) {
 
 						if alertMessages[i].MessageID != 0 {
@@ -188,7 +301,7 @@ func main() {
 						}
 
 						problemMsg := fmt.Sprintf("<b>Antinone Monitoring🤖🗣</b>\n"+
-							"⚠️🚽 Server Outline %s is dead ☠️⚰️‼️\n"+
+							"⚠️🚽 Server Outline %s is dead ☠️⚰️‼️\n--TEST--\n"+
 							"📊 ErrCount: %d\n"+
 							"🧭 Status: %d\n"+
 							"🖥 ServerName: %s\n"+
@@ -202,8 +315,8 @@ func main() {
 							log.Printf("| Message sent successfully with ID: %d\n", alertMessages[i].MessageID)
 						}
 
-						if serversMonitoring[i].ErrorCount >= serversMonitoring[i].TrigerCount {
-							if time.Now().Unix()-serversMonitoring[i].ResetTime > 240 {
+						if serversMonitoring[i].ErrorCount > serversMonitoring[i].TrigerCount {
+							if time.Now().Unix()-serversMonitoring[i].ResetTime > reset_time_flag {
 								if serverAction("reset", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName, serversMonitoring[i].Profile) {
 
 									serversMonitoring[i].ResetTime = time.Now().Unix()
