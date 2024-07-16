@@ -34,8 +34,8 @@ func SendMesg(config *TelegramConfig, message string, chatID int64, respUrl stri
 	if respUrl != "" || webAppUrl != "" {
 		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonWebApp("📱WebApp", tgbotapi.WebAppInfo{URL: webAppUrl}),
 				tgbotapi.NewInlineKeyboardButtonWebApp("ℹ️State", tgbotapi.WebAppInfo{URL: respUrl}),
+				tgbotapi.NewInlineKeyboardButtonWebApp("📱WebApp", tgbotapi.WebAppInfo{URL: webAppUrl}),
 			),
 		)
 	}

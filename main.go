@@ -26,11 +26,12 @@ type AlertMessage struct {
 }
 
 type Config struct {
-	ActiveBlockCheck  bool  `env:"BLOCK_CHECK"`
-	HttpTimeout       int   `env:"HTTP_TIMEOUT"`
-	LoopTime          int   `env:"LOOP_TIME"`
-	LoopTimeCheckHost int   `env:"LOOP_TIME_CHECK_HOST"`
-	ResetTime         int64 `env:"RESET_TIME_FLAG"`
+	ActiveBlockCheck  bool   `env:"BLOCK_CHECK"`
+	HttpTimeout       int    `env:"HTTP_TIMEOUT"`
+	LoopTime          int    `env:"LOOP_TIME"`
+	LoopTimeCheckHost int    `env:"LOOP_TIME_CHECK_HOST"`
+	ResetTime         int64  `env:"RESET_TIME_FLAG"`
+	WebAppUrl         string `env:"WEB_APP_URL"`
 }
 
 func monitorServer(url string) bool {
@@ -232,7 +233,7 @@ func main() {
 					// if alertMessages[i].ServerDomain == serversMonitoring[i].ServerDomain {
 					//log.Printf("| Alert Domain is %s = Server Domain is %s", alertMessages[i].ServerDomain, serversMonitoring[i].ServerDomain)
 
-					log.Printf("| %d - check service %s - errorCount: %d \n", i, serversMonitoring[i].ServerDomain, serversMonitoring[i].ErrorCount)
+					//log.Printf("| %d - check service %s - errorCount: %d \n", i, serversMonitoring[i].ServerDomain, serversMonitoring[i].ErrorCount)
 					healthCheckUrl := fmt.Sprintf("https://%s:%d/%s%s", serversMonitoring[i].ServerDomain, serversMonitoring[i].ServerPort, serversMonitoring[i].ApiKey, serversMonitoring[i].HealthCheck)
 					if monitorServer(healthCheckUrl) {
 
@@ -312,13 +313,13 @@ func main() {
 						if err != nil {
 							log.Printf("| -- Check Block Host Fail Error is : %v", err)
 						} else {
-							log.Printf("| %d -- Response Check Host %s - Request ID: %s \n", i, serversMonitoring[i].ServerDomain, checkResp["request_id"])
+							//log.Printf("| %d -- Response Check Host %s - Request ID: %s \n", i, serversMonitoring[i].ServerDomain, checkResp["request_id"])
 
 							checkResult, err := checkHost.CheckResultTry(fmt.Sprint(checkResp["request_id"]))
 							if err != nil {
 								log.Printf("| -- Check Result Block Host Fail Error is : %v", err)
 							} else {
-								log.Printf("| %d -- Response Check Result Host : %v\n", i, checkResult)
+								//log.Printf("| %d -- Response Check Result Host : %v\n", i, checkResult)
 								for key, entries := range checkResult {
 									for _, entry := range entries {
 										// Check if the error field contains a timeout error
@@ -326,8 +327,6 @@ func main() {
 											log.Printf("| %d -- Timeout error detected for key '%s': %v", i, key, entry)
 											blockLocation = append(blockLocation, key+"\n")
 											// Handle the timeout error as required (e.g., log it, return an error, etc.)
-										} else {
-											log.Printf("| %d -- %s from '%s' is okey  %v", i, serversMonitoring[i].ServerDomain, key, entry)
 										}
 									}
 								}
@@ -342,7 +341,7 @@ func main() {
 								"⚠️🚽Problem this locations:\n<code>%s</code>\n"+
 								"⏰ Time: %s", serversMonitoring[i].ServerDomain, checkResp["permanent_link"], strings.Trim(fmt.Sprint(blockLocation), "[]"), time.Now().Format("2006-01-02 15:04:05"))
 
-							_, err := alert.SendMesg(telegramToken, BlockMsg, cfgAlert.AdminID, fmt.Sprintf("%s", checkResp["permanent_link"]), fmt.Sprintf("https://antinone.xyz/status?%s&%s", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName))
+							_, err := alert.SendMesg(telegramToken, BlockMsg, cfgAlert.AdminID, fmt.Sprintf("%s", checkResp["permanent_link"]), fmt.Sprintf("%s/status?region=%s&name=%s", cfgMain.WebAppUrl, serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName))
 							if err != nil {
 								log.Printf("| Message sent fail  %v", err)
 							}
