@@ -18,7 +18,7 @@ func NewTelegramConfig(token, apiEndPoint string) *TelegramConfig {
 	}
 }
 
-func SendMesg(config *TelegramConfig, message string, chatID int64) (int, error) {
+func SendMesg(config *TelegramConfig, message string, chatID int64, respUrl string, webAppUrl string) (int, error) {
 	// Create a new bot instance
 	bot, err := tgbotapi.NewBotAPIWithAPIEndpoint(config.Token, config.ApiEndPoint)
 	if err != nil {
@@ -30,7 +30,14 @@ func SendMesg(config *TelegramConfig, message string, chatID int64) (int, error)
 	msg := tgbotapi.NewMessage(chatID, message)
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.DisableWebPagePreview = true
-
+	if respUrl != "" || webAppUrl != "" {
+		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonWebApp("📱WebApp", tgbotapi.WebAppInfo{URL: webAppUrl}),
+				tgbotapi.NewInlineKeyboardButtonWebApp("ℹ️State", tgbotapi.WebAppInfo{URL: respUrl}),
+			),
+		)
+	}
 	// Send the message
 	sentMessage, err := bot.Send(msg)
 	if err != nil {
