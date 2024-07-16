@@ -7,8 +7,9 @@ import (
 )
 
 type TelegramConfig struct {
-	Token       string
-	ApiEndPoint string
+	Token       string `env:"TELEGRAM_BOT_TOKEN"`
+	ApiEndPoint string `env:"TELEGRAM_API"`
+	AdminID     int64  `env:"TELEGRAM_ADMIN_ID"`
 }
 
 func NewTelegramConfig(token, apiEndPoint string) *TelegramConfig {

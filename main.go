@@ -16,12 +16,21 @@ import (
 	"sync"
 	"time"
 
+	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
 )
 
 type AlertMessage struct {
 	MessageID    int
 	ServerDomain string
+}
+
+type Config struct {
+	ActiveBlockCheck  bool  `env:"BLOCK_CHECK"`
+	HttpTimeout       int   `env:"HTTP_TIMEOUT"`
+	LoopTime          int   `env:"LOOP_TIME"`
+	LoopTimeCheckHost int   `env:"LOOP_TIME_CHECK_HOST"`
+	ResetTime         int64 `env:"RESET_TIME_FLAG"`
 }
 
 func monitorServer(url string) bool {
@@ -111,40 +120,28 @@ func serverAction(action, region, name, profile string) bool {
 }
 
 func main() {
-	err := godotenv.Load("./vars/.env")
+	_ = godotenv.Load("./vars/.env")
+
+	cfgMain := Config{}        // 👈 new instance of `Config`
+	err := env.Parse(&cfgMain) // 👈 Parse environment variables into `Config`
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatalf("unable to parse ennvironment variables: %e", err)
 	}
 
-	loop_time, err := strconv.Atoi(os.Getenv("LOOP_TIME"))
+	cfgDb := db.DBConfig{}
+	err = env.Parse(&cfgDb) // 👈 Parse environment variables into `Config`
 	if err != nil {
-		log.Printf("| Error ENV LOOP_TIME: %v\n", err)
+		log.Fatalf("unable to parse ennvironment variables: %e", err)
 	}
 
-	loop_time_check_host, err := strconv.Atoi(os.Getenv("LOOP_TIME_CHECK_HOST"))
+	cfgAlert := alert.TelegramConfig{}
+	err = env.Parse(&cfgAlert) // 👈 Parse environment variables into `Config`
 	if err != nil {
-		log.Printf("| Error ENV LOOP_TIME_CHECK_HOST: %v\n", err)
+		log.Fatalf("unable to parse ennvironment variables: %e", err)
 	}
 
-	reset_time_flag, err := strconv.ParseInt(os.Getenv("RESET_TIME_FLAG"), 10, 64)
-	if err != nil {
-		log.Printf("| Error ENV RESET_TIME_FLAG: %v\n", err)
-	}
-
-	cfg := db.DBConfig{
-		Host:     os.Getenv("DB_HOST"),
-		Port:     5432,
-		User:     os.Getenv("DB_USER"),
-		Password: os.Getenv("DB_PASS"),
-		DBName:   os.Getenv("DB_NAME"),
-	}
-
-	telegramToken := alert.NewTelegramConfig(os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("TELEGRAM_API"))
+	telegramToken := alert.NewTelegramConfig(cfgAlert.Token, cfgAlert.ApiEndPoint)
 	// adminID, _ := strconv.ParseInt(os.Getenv("TELEGRAM_ADMIN_ID"), 10, 64)
-	adminID, err := strconv.ParseInt(os.Getenv("TELEGRAM_ADMIN_ID"), 10, 64) //user Admin telegram ID
-	if err != nil {
-		fmt.Printf("| Failed load AdminID  %d of type %T , Error is %v\n", adminID, adminID, err)
-	}
 	var messageID int = 0
 
 	var ServerDomain string
@@ -161,7 +158,7 @@ func main() {
 
 	serversMonitoring := []db.Server{}
 
-	dbs, err := db.ConnectToDatabase(&cfg)
+	dbs, err := db.ConnectToDatabase(&cfgDb)
 	if err != nil {
 		fmt.Println("Failed to connect to the database:", err)
 	}
@@ -223,6 +220,11 @@ func main() {
 
 	// Main loop to monitor the programs
 
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+	// Initialize Telegram bot
+
 	go func() {
 		for {
 			for i := range serversMonitoring {
@@ -235,7 +237,7 @@ func main() {
 					if monitorServer(healthCheckUrl) {
 
 						if alertMessages[i].MessageID != 0 {
-							err := alert.DeleteMesg(telegramToken, alertMessages[i].MessageID, adminID)
+							err := alert.DeleteMesg(telegramToken, alertMessages[i].MessageID, cfgAlert.AdminID)
 							if err != nil {
 								log.Printf("| Message Delete fail  %v", err)
 							} else {
@@ -252,7 +254,7 @@ func main() {
 							"🌎 Region: %s\n"+
 							"⏰ Time: %s",
 							serversMonitoring[i].ServerDomain, serversMonitoring[i].ErrorCount, 000, serversMonitoring[i].ServerName, serversMonitoring[i].ServerRegion, time.Now().Format("2006-01-02 15:04:05"))
-						alertMessages[i].MessageID, err = alert.SendMesg(telegramToken, problemMsg, adminID, "", "")
+						alertMessages[i].MessageID, err = alert.SendMesg(telegramToken, problemMsg, cfgAlert.AdminID, "", "")
 						if err != nil {
 							log.Printf("| Message sent fail  %v", err)
 						} else {
@@ -260,7 +262,7 @@ func main() {
 						}
 
 						if serversMonitoring[i].ErrorCount > serversMonitoring[i].TrigerCount {
-							if time.Now().Unix()-serversMonitoring[i].ResetTime > reset_time_flag {
+							if time.Now().Unix()-serversMonitoring[i].ResetTime > cfgMain.ResetTime {
 								if serverAction("reset", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName, serversMonitoring[i].Profile) {
 
 									serversMonitoring[i].ResetTime = time.Now().Unix()
@@ -271,7 +273,7 @@ func main() {
 										"🌎 Region: %s\n"+
 										"⏰ ResetTime: %s",
 										serversMonitoring[i].ServerDomain, serversMonitoring[i].ServerName, serversMonitoring[i].ServerRegion, time.Now().Format("2006-01-02 15:04:05"))
-									_, err = alert.SendMesg(telegramToken, resetMsg, adminID, "", "")
+									_, err = alert.SendMesg(telegramToken, resetMsg, cfgAlert.AdminID, "", "")
 									if err != nil {
 										log.Printf("| Message sent fail  %v", err)
 									}
@@ -292,91 +294,89 @@ func main() {
 				}
 			}
 			//log.Println("| <<<---------------END--------------->>> |")
-			time.Sleep(time.Duration(loop_time) * time.Second) // Sleep for 60 seconds before checking again
+			time.Sleep(time.Duration(cfgMain.LoopTime) * time.Second) // Sleep for 60 seconds before checking again
 		}
+		wg.Done()
 	}()
 
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	// Initialize Telegram bot
-
 	go func() {
-		for {
-			for i := range serversMonitoring {
-				if serversMonitoring[i].Active {
-					blockLocation := []string{}
-					checkBlockUrl := fmt.Sprintf(os.Getenv("API_BLOCK_CHECK"), serversMonitoring[i].ServerDomain, 10901, os.Getenv("LOCATION_IR1"), os.Getenv("LOCATION_IR2"), os.Getenv("LOCATION_IR3"), os.Getenv("LOCATION_IR4"))
-					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-					defer cancel()
-					checkResp, err := checkHost.CheckHost(ctx, checkBlockUrl)
-					if err != nil {
-						log.Printf("| -- Check Block Host Fail Error is : %v", err)
-					} else {
-						log.Printf("| %d -- Response Check Host %s - Request ID: %s \n", i, serversMonitoring[i].ServerDomain, checkResp["request_id"])
-
-						checkResult, err := checkHost.CheckResultTry(fmt.Sprint(checkResp["request_id"]))
+		if cfgMain.ActiveBlockCheck {
+			for {
+				for i := range serversMonitoring {
+					if serversMonitoring[i].Active {
+						blockLocation := []string{}
+						checkBlockUrl := fmt.Sprintf(os.Getenv("API_BLOCK_CHECK"), serversMonitoring[i].ServerDomain, 10901, os.Getenv("LOCATION_IR1"), os.Getenv("LOCATION_IR2"), os.Getenv("LOCATION_IR3"), os.Getenv("LOCATION_IR4"))
+						ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+						defer cancel()
+						checkResp, err := checkHost.CheckHost(ctx, checkBlockUrl)
 						if err != nil {
-							log.Printf("| -- Check Result Block Host Fail Error is : %v", err)
+							log.Printf("| -- Check Block Host Fail Error is : %v", err)
 						} else {
-							log.Printf("| %d -- Response Check Result Host : %v\n", i, checkResult)
-							for key, entries := range checkResult {
-								for _, entry := range entries {
-									// Check if the error field contains a timeout error
-									if entry.Error == "Connection timed out" {
-										log.Printf("| %d -- Timeout error detected for key '%s': %v", i, key, entry)
-										blockLocation = append(blockLocation, key+"\n")
-										// Handle the timeout error as required (e.g., log it, return an error, etc.)
-									} else {
-										log.Printf("| %d -- %s from '%s' is okey  %v", i, serversMonitoring[i].ServerDomain, key, entry)
+							log.Printf("| %d -- Response Check Host %s - Request ID: %s \n", i, serversMonitoring[i].ServerDomain, checkResp["request_id"])
+
+							checkResult, err := checkHost.CheckResultTry(fmt.Sprint(checkResp["request_id"]))
+							if err != nil {
+								log.Printf("| -- Check Result Block Host Fail Error is : %v", err)
+							} else {
+								log.Printf("| %d -- Response Check Result Host : %v\n", i, checkResult)
+								for key, entries := range checkResult {
+									for _, entry := range entries {
+										// Check if the error field contains a timeout error
+										if entry.Error == "Connection timed out" {
+											log.Printf("| %d -- Timeout error detected for key '%s': %v", i, key, entry)
+											blockLocation = append(blockLocation, key+"\n")
+											// Handle the timeout error as required (e.g., log it, return an error, etc.)
+										} else {
+											log.Printf("| %d -- %s from '%s' is okey  %v", i, serversMonitoring[i].ServerDomain, key, entry)
+										}
 									}
 								}
 							}
 						}
-					}
-					// Check each key in the response for timeout errors
+						// Check each key in the response for timeout errors
 
-					if len(blockLocation) != 0 {
-						BlockMsg := fmt.Sprintf("<b>Antinone Monitoring🤖🗣</b>\n\n"+
-							"⛔️CHECK BLOCK SERVER IN IRAN🇮🇷 ‼️\n\n"+
-							"ℹ️Check <code>%s</code> <a href=\"%s\">RequestID</a> \n"+
-							"⚠️🚽Problem this locations:\n<code>%s</code>\n"+
-							"⏰ Time: %s", serversMonitoring[i].ServerDomain, checkResp["permanent_link"], strings.Trim(fmt.Sprint(blockLocation), "[]"), time.Now().Format("2006-01-02 15:04:05"))
+						if len(blockLocation) != 0 {
+							BlockMsg := fmt.Sprintf("<b>Antinone Monitoring🤖🗣</b>\n\n"+
+								"⛔️CHECK BLOCK SERVER IN IRAN🇮🇷 ‼️\n\n"+
+								"ℹ️Check <code>%s</code> <a href=\"%s\">RequestID</a> \n"+
+								"⚠️🚽Problem this locations:\n<code>%s</code>\n"+
+								"⏰ Time: %s", serversMonitoring[i].ServerDomain, checkResp["permanent_link"], strings.Trim(fmt.Sprint(blockLocation), "[]"), time.Now().Format("2006-01-02 15:04:05"))
 
-						_, err := alert.SendMesg(telegramToken, BlockMsg, adminID, fmt.Sprintf("%s", checkResp["permanent_link"]), fmt.Sprintf("https://antinone.xyz/status?%s&%s", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName))
-						if err != nil {
-							log.Printf("| Message sent fail  %v", err)
+							_, err := alert.SendMesg(telegramToken, BlockMsg, cfgAlert.AdminID, fmt.Sprintf("%s", checkResp["permanent_link"]), fmt.Sprintf("https://antinone.xyz/status?%s&%s", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName))
+							if err != nil {
+								log.Printf("| Message sent fail  %v", err)
+							}
 						}
-					}
 
-					if len(blockLocation) == 3 { //check config changIP true or false from database
+						if len(blockLocation) == 3 { //check config changIP true or false from database
 
-						if time.Now().Unix()-serversMonitoring[i].ResetTime > reset_time_flag {
-							if serverAction("changeip", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName, serversMonitoring[i].Profile) {
-								serversMonitoring[i].ResetTime = time.Now().Unix()
-								BlockMsg := fmt.Sprintf("<b>Antinone Monitoring🤖🗣</b>\n\n"+
-									"♻️ Call Change IP ‼️\n\n"+
-									"ℹ️HOST: <code>%s</code>\n"+
-									"⏰ Time: %s", serversMonitoring[i].ServerDomain, time.Now().Format("2006-01-02 15:04:05"))
+							if time.Now().Unix()-serversMonitoring[i].ResetTime > cfgMain.ResetTime {
+								if serverAction("changeip", serversMonitoring[i].ServerRegion, serversMonitoring[i].ServerName, serversMonitoring[i].Profile) {
+									serversMonitoring[i].ResetTime = time.Now().Unix()
+									BlockMsg := fmt.Sprintf("<b>Antinone Monitoring🤖🗣</b>\n\n"+
+										"♻️ Call Change IP ‼️\n\n"+
+										"ℹ️HOST: <code>%s</code>\n"+
+										"⏰ Time: %s", serversMonitoring[i].ServerDomain, time.Now().Format("2006-01-02 15:04:05"))
 
-								_, err := alert.SendMesg(telegramToken, BlockMsg, adminID, "", "")
-								if err != nil {
-									log.Printf("| -- Message sent fail  %v", err)
+									_, err := alert.SendMesg(telegramToken, BlockMsg, cfgAlert.AdminID, "", "")
+									if err != nil {
+										log.Printf("| -- Message sent fail  %v", err)
+									}
+								} else {
+									log.Printf("| %d -- Program changeIP failed server %s\n", i, serversMonitoring[i].ServerDomain)
 								}
 							} else {
-								log.Printf("| %d -- Program changeIP failed server %s\n", i, serversMonitoring[i].ServerDomain)
+								log.Printf("| %d -- The server %s was changeIP %d minutes ago\n", i, serversMonitoring[i].ServerDomain, (time.Now().Unix()-serversMonitoring[i].ResetTime)/60)
 							}
-						} else {
-							log.Printf("| %d -- The server %s was changeIP %d minutes ago\n", i, serversMonitoring[i].ServerDomain, (time.Now().Unix()-serversMonitoring[i].ResetTime)/60)
+
 						}
 
+					} else {
+						log.Printf("| %d -- Disable monitoring service %s\n", i, serversMonitoring[i].ServerDomain)
 					}
-
-				} else {
-					log.Printf("| %d -- Disable monitoring service %s\n", i, serversMonitoring[i].ServerDomain)
 				}
+				time.Sleep(time.Duration(cfgMain.LoopTimeCheckHost) * time.Second)
 			}
-			time.Sleep(time.Duration(loop_time_check_host) * time.Second)
 		}
 		wg.Done()
 	}()

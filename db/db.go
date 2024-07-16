@@ -17,11 +17,11 @@ import (
 // )
 
 type DBConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBName   string
+	Host     string `env:"DB_HOST"`
+	Port     int    `env:"DB_PORT"`
+	User     string `env:"DB_USER"`
+	Password string `env:"DB_PASS"`
+	DBName   string `env:"DB_NAME"`
 }
 
 type Server struct {
